@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Thống kê & báo cáo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+<div id="banner-placeholder"></div>
+<div class="app-layout">
+  <div id="sidebar-placeholder"></div>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div>
+        <h1>Thống kê và báo cáo</h1>
+        <div class="subtitle">Bảng, biểu đồ, xếp hạng chất lượng và xuất báo cáo</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="form-row" style="align-items:flex-end;">
+        <div class="form-group" style="max-width:260px;">
+          <label>Kỳ đánh giá (ID)</label>
+          <input type="number" id="periodIdInput" value="1" />
+        </div>
+        <div class="form-group"><button class="btn btn-primary" onclick="loadAll()">Xem báo cáo</button></div>
+        <div class="form-group"><button class="btn btn-outline" onclick="generateRankings()">Tạo lại xếp hạng</button></div>
+        <div class="form-group"><button class="btn btn-outline" onclick="exportCsv()">⬇ Xuất báo cáo (CSV)</button></div>
+      </div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="card">
+        <h3>Biểu đồ điểm trung bình theo nhóm tiêu chí</h3>
+        <canvas id="groupChart" height="220"></canvas>
+      </div>
+      <div class="card">
+        <h3>Bảng xếp hạng chất lượng</h3>
+        <table class="data-table">
+          <thead><tr><th>Hạng</th><th>Đối tượng</th><th>Tổng điểm</th><th>Xếp loại</th></tr></thead>
+          <tbody id="rankingBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script src="assets/js/layout.js"></script>
+<script>
+  requireAuth(["ADMIN", "MANAGER", "LECTURER"]);
+  renderLayout("reports");
+
+  let chartInstance = null;
+
+  async function loadAll() {
+    const periodId = document.getElementById("periodIdInput").value;
+    try {
+      const dashboard = await Api.get(`/statistics/dashboard?periodId=${periodId}`);
+      const rankings = await Api.get(`/statistics/rankings/${periodId}`);
+
+      document.getElementById("rankingBody").innerHTML = rankings.length
+        ? rankings.map(r => `<tr><td>${r.rankNo}</td><td>${r.targetName}</td><td>${r.totalScore}</td><td><span class="badge badge-info">${r.rankLabel}</span></td></tr>`).join("")
+        : `<tr><td colspan="4" class="text-center" style="color:#999;">Chưa có dữ liệu xếp hạng cho kỳ này</td></tr>`;
+
+      const ctx = document.getElementById("groupChart");
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: dashboard.groupAverages.map(g => g.groupName),
+          datasets: [{ label: "Điểm trung bình", data: dashboard.groupAverages.map(g => g.averageScore), backgroundColor: "#1e88f0" }]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true, max: 5 } } }
+      });
+    } catch (e) { alert(e.message); }
+  }
+
+  async function generateRankings() {
+    const periodId = document.getElementById("periodIdInput").value;
+    try {
+      const result = await Api.post(`/statistics/rankings/${periodId}/generate`, {});
+      alert(result.message);
+      await loadAll();
+    } catch (e) { alert(e.message); }
+  }
+
+  async function exportCsv() {
+    const periodId = document.getElementById("periodIdInput").value;
+    const token = Api.getToken();
+    const res = await fetch(`${API_BASE_URL}/statistics/reports/${periodId}/export-csv`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return alert("Không xuất được báo cáo.");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bao-cao-xep-hang-ky-${periodId}.csv`;
+    a.click();
+  }
+
+  loadAll();
+</script>
+</body>
+</html>

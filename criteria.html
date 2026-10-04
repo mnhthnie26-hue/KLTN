@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Quản lý tiêu chí / KPI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+<div id="banner-placeholder"></div>
+<div class="app-layout">
+  <div id="sidebar-placeholder"></div>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div>
+        <h1>Quản lý tiêu chí / KPI đánh giá</h1>
+        <div class="subtitle">Thêm, sửa, xóa, phân loại tiêu chí • Thiết lập trọng số và thang điểm</div>
+      </div>
+      <button class="btn btn-primary" onclick="openCriteriaForm()">+ Thêm tiêu chí</button>
+    </div>
+
+    <div class="card">
+      <h3>Phân loại tiêu chí (nhóm)</h3>
+      <div class="form-row" style="align-items:flex-end;">
+        <div class="form-group"><label>Mã nhóm</label><input id="groupCode" placeholder="VD: DT" /></div>
+        <div class="form-group" style="flex:2;"><label>Tên nhóm</label><input id="groupName" placeholder="VD: Đào tạo" /></div>
+        <div class="form-group"><button class="btn btn-outline" onclick="createGroup()">+ Thêm nhóm</button></div>
+      </div>
+      <table class="data-table">
+        <thead><tr><th>Mã</th><th>Tên nhóm</th><th>Số tiêu chí</th><th></th></tr></thead>
+        <tbody id="groupTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Danh sách tiêu chí / KPI</h3>
+      <div class="form-group" style="max-width:260px;">
+        <label>Lọc theo nhóm</label>
+        <select id="filterGroup" onchange="loadCriteria()"><option value="">-- Tất cả --</option></select>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr><th>Mã</th><th>Tên tiêu chí</th><th>Nhóm</th><th>Trọng số</th><th>Thang điểm</th><th>Trạng thái</th><th></th></tr>
+        </thead>
+        <tbody id="criteriaTableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Form thêm/sửa tiêu chí -->
+    <div class="card" id="criteriaFormCard" style="display:none;">
+      <h3 id="formTitle">Thêm tiêu chí mới</h3>
+      <input type="hidden" id="criteriaId" />
+      <div class="form-row">
+        <div class="form-group"><label>Mã tiêu chí</label><input id="criteriaCode" /></div>
+        <div class="form-group" style="flex:2"><label>Tên tiêu chí</label><input id="criteriaName" /></div>
+      </div>
+      <div class="form-group"><label>Mô tả</label><textarea id="criteriaDesc" rows="2"></textarea></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Nhóm tiêu chí</label>
+          <select id="criteriaGroupSelect"></select>
+        </div>
+        <div class="form-group"><label>Trọng số (0 - 1)</label><input type="number" step="0.01" id="criteriaWeight" value="1.0" /></div>
+        <div class="form-group"><label>Thang điểm nhỏ nhất</label><input type="number" id="scaleMin" value="1" /></div>
+        <div class="form-group"><label>Thang điểm lớn nhất</label><input type="number" id="scaleMax" value="5" /></div>
+      </div>
+      <div class="form-group">
+        <label><input type="checkbox" id="isActive" checked style="width:auto;display:inline-block;" /> Đang áp dụng</label>
+      </div>
+      <div class="flex gap-8">
+        <button class="btn btn-primary" onclick="saveCriteria()">Lưu</button>
+        <button class="btn btn-outline" onclick="closeCriteriaForm()">Hủy</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script src="assets/js/layout.js"></script>
+<script>
+  requireAuth(["ADMIN", "MANAGER"]);
+  renderLayout("criteria");
+
+  let groups = [];
+
+  async function loadGroups() {
+    groups = await Api.get("/criteria-groups");
+    document.getElementById("groupTableBody").innerHTML = groups.map(g => `
+      <tr>
+        <td>${g.groupCode}</td><td>${g.groupName}</td><td>${g.criteriaCount}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="deleteGroup(${g.groupId})">Xóa</button></td>
+      </tr>`).join("");
+
+    const opts = groups.map(g => `<option value="${g.groupId}">${g.groupName}</option>`).join("");
+    document.getElementById("filterGroup").innerHTML = `<option value="">-- Tất cả --</option>${opts}`;
+    document.getElementById("criteriaGroupSelect").innerHTML = opts;
+  }
+
+  async function createGroup() {
+    const groupCode = document.getElementById("groupCode").value.trim();
+    const groupName = document.getElementById("groupName").value.trim();
+    if (!groupCode || !groupName) return alert("Vui lòng nhập đủ mã và tên nhóm.");
+    try {
+      await Api.post("/criteria-groups", { groupCode, groupName, description: "" });
+      document.getElementById("groupCode").value = "";
+      document.getElementById("groupName").value = "";
+      await loadGroups();
+    } catch (e) { alert(e.message); }
+  }
+
+  async function deleteGroup(id) {
+    if (!confirm("Xóa nhóm tiêu chí này?")) return;
+    try { await Api.del(`/criteria-groups/${id}`); await loadGroups(); await loadCriteria(); }
+    catch (e) { alert(e.message); }
+  }
+
+  async function loadCriteria() {
+    const groupId = document.getElementById("filterGroup").value;
+    const query = groupId ? `?groupId=${groupId}` : "";
+    const list = await Api.get(`/criteria${query}`);
+    document.getElementById("criteriaTableBody").innerHTML = list.map(c => `
+      <tr>
+        <td>${c.criteriaCode}</td>
+        <td>${c.criteriaName}</td>
+        <td>${c.groupName}</td>
+        <td>${c.weight}</td>
+        <td>${c.scaleMin} - ${c.scaleMax}</td>
+        <td>${c.isActive ? '<span class="badge badge-success">Áp dụng</span>' : '<span class="badge badge-warning">Ngừng</span>'}</td>
+        <td class="flex gap-8">
+          <button class="btn btn-outline btn-sm" onclick='editCriteria(${JSON.stringify(c)})'>Sửa</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCriteria(${c.criteriaId})">Xóa</button>
+        </td>
+      </tr>`).join("") || `<tr><td colspan="7" class="text-center" style="color:#999;">Chưa có tiêu chí</td></tr>`;
+  }
+
+  function openCriteriaForm() {
+    document.getElementById("formTitle").textContent = "Thêm tiêu chí mới";
+    document.getElementById("criteriaId").value = "";
+    document.getElementById("criteriaCode").value = "";
+    document.getElementById("criteriaName").value = "";
+    document.getElementById("criteriaDesc").value = "";
+    document.getElementById("criteriaWeight").value = "1.0";
+    document.getElementById("scaleMin").value = "1";
+    document.getElementById("scaleMax").value = "5";
+    document.getElementById("isActive").checked = true;
+    document.getElementById("criteriaFormCard").style.display = "block";
+  }
+
+  function editCriteria(c) {
+    document.getElementById("formTitle").textContent = "Cập nhật tiêu chí";
+    document.getElementById("criteriaId").value = c.criteriaId;
+    document.getElementById("criteriaCode").value = c.criteriaCode;
+    document.getElementById("criteriaName").value = c.criteriaName;
+    document.getElementById("criteriaDesc").value = c.description || "";
+    document.getElementById("criteriaGroupSelect").value = c.groupId;
+    document.getElementById("criteriaWeight").value = c.weight;
+    document.getElementById("scaleMin").value = c.scaleMin;
+    document.getElementById("scaleMax").value = c.scaleMax;
+    document.getElementById("isActive").checked = c.isActive;
+    document.getElementById("criteriaFormCard").style.display = "block";
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  }
+
+  function closeCriteriaForm() {
+    document.getElementById("criteriaFormCard").style.display = "none";
+  }
+
+  async function saveCriteria() {
+    const id = document.getElementById("criteriaId").value;
+    const payload = {
+      groupId: parseInt(document.getElementById("criteriaGroupSelect").value),
+      criteriaCode: document.getElementById("criteriaCode").value.trim(),
+      criteriaName: document.getElementById("criteriaName").value.trim(),
+      description: document.getElementById("criteriaDesc").value.trim(),
+      weight: parseFloat(document.getElementById("criteriaWeight").value),
+      scaleMin: parseFloat(document.getElementById("scaleMin").value),
+      scaleMax: parseFloat(document.getElementById("scaleMax").value),
+      isActive: document.getElementById("isActive").checked,
+    };
+    if (!payload.criteriaCode || !payload.criteriaName || !payload.groupId) {
+      return alert("Vui lòng nhập đầy đủ mã, tên và chọn nhóm tiêu chí.");
+    }
+    try {
+      if (id) await Api.put(`/criteria/${id}`, payload);
+      else await Api.post("/criteria", payload);
+      closeCriteriaForm();
+      await loadCriteria();
+    } catch (e) { alert(e.message); }
+  }
+
+  async function deleteCriteria(id) {
+    if (!confirm("Xóa tiêu chí này?")) return;
+    try { await Api.del(`/criteria/${id}`); await loadCriteria(); }
+    catch (e) { alert(e.message); }
+  }
+
+  (async () => { await loadGroups(); await loadCriteria(); })();
+</script>
+</body>
+</html>

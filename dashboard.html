@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Tổng quan | Hệ thống đánh giá chất lượng</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+<div id="banner-placeholder"></div>
+<div class="app-layout">
+  <div id="sidebar-placeholder"></div>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div>
+        <h1>Tổng quan chất lượng hoạt động</h1>
+        <div class="subtitle">Số liệu tổng hợp từ các tiêu chí, khảo sát và đánh giá</div>
+      </div>
+    </div>
+
+    <div class="stat-grid" id="statGrid">
+      <!-- các stat-card sẽ được render bằng JS -->
+    </div>
+
+    <div class="chart-grid">
+      <div class="card">
+        <h3>Điểm trung bình theo nhóm tiêu chí</h3>
+        <canvas id="groupChart" height="220"></canvas>
+      </div>
+      <div class="card">
+        <h3>Xếp hạng chất lượng (Top 10)</h3>
+        <table class="data-table" id="rankingTable">
+          <thead>
+            <tr><th>Hạng</th><th>Đối tượng</th><th>Điểm</th><th>Xếp loại</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script src="assets/js/layout.js"></script>
+<script>
+  requireAuth();
+  renderLayout("dashboard");
+
+  async function loadDashboard() {
+    try {
+      const data = await Api.get("/statistics/dashboard");
+
+      document.getElementById("statGrid").innerHTML = `
+        <div class="stat-card"><div class="stat-value">${data.totalCriteria}</div><div class="stat-label">Tiêu chí / KPI đang áp dụng</div></div>
+        <div class="stat-card"><div class="stat-value">${data.totalSurveys}</div><div class="stat-label">Phiếu khảo sát</div></div>
+        <div class="stat-card"><div class="stat-value">${data.totalResponses}</div><div class="stat-label">Lượt phản hồi khảo sát</div></div>
+        <div class="stat-card"><div class="stat-value">${data.totalUsers}</div><div class="stat-label">Người dùng hoạt động</div></div>
+        <div class="stat-card"><div class="stat-value">${data.averageScore}</div><div class="stat-label">Điểm trung bình chung</div></div>
+      `;
+
+      const tbody = document.querySelector("#rankingTable tbody");
+      tbody.innerHTML = data.topRankings.length
+        ? data.topRankings.map(r => `
+            <tr>
+              <td>${r.rankNo}</td>
+              <td>${r.targetName}</td>
+              <td>${r.totalScore}</td>
+              <td><span class="badge badge-info">${r.rankLabel}</span></td>
+            </tr>`).join("")
+        : `<tr><td colspan="4" class="text-center" style="color:#999;">Chưa có dữ liệu xếp hạng</td></tr>`;
+
+      const ctx = document.getElementById("groupChart");
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: data.groupAverages.map(g => g.groupName),
+          datasets: [{
+            label: "Điểm trung bình",
+            data: data.groupAverages.map(g => g.averageScore),
+            backgroundColor: "#1e88f0"
+          }]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true, max: 5 } } }
+      });
+    } catch (err) {
+      alert("Không tải được dữ liệu tổng quan: " + err.message);
+    }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>

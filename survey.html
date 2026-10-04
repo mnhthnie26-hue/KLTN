@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Quản lý khảo sát</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+<div id="banner-placeholder"></div>
+<div class="app-layout">
+  <div id="sidebar-placeholder"></div>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div>
+        <h1>Quản lý khảo sát</h1>
+        <div class="subtitle">Tạo và quản lý phiếu khảo sát trực tuyến • Thu thập kết quả</div>
+      </div>
+      <button class="btn btn-primary" onclick="toggleCreateForm()">+ Tạo khảo sát mới</button>
+    </div>
+
+    <div class="card" id="createFormCard" style="display:none;">
+      <h3>Tạo phiếu khảo sát</h3>
+      <div class="form-row">
+        <div class="form-group" style="flex:2"><label>Tiêu đề khảo sát</label><input id="surveyTitle" /></div>
+        <div class="form-group">
+          <label>Đối tượng khảo sát</label>
+          <select id="targetRole">
+            <option value="ALL">Tất cả</option>
+            <option value="STUDENT">Sinh viên</option>
+            <option value="LECTURER">Giảng viên</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group"><label>Mô tả</label><textarea id="surveyDesc" rows="2"></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label>Ngày bắt đầu</label><input type="date" id="startDate" /></div>
+        <div class="form-group"><label>Ngày kết thúc</label><input type="date" id="endDate" /></div>
+      </div>
+
+      <h3>Câu hỏi khảo sát</h3>
+      <div id="questionsList"></div>
+      <button class="btn btn-outline btn-sm" onclick="addQuestionRow()">+ Thêm câu hỏi</button>
+
+      <div class="flex gap-8 mt-16">
+        <button class="btn btn-primary" onclick="createSurvey()">Tạo khảo sát</button>
+        <button class="btn btn-outline" onclick="toggleCreateForm()">Hủy</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Danh sách khảo sát</h3>
+      <table class="data-table">
+        <thead>
+          <tr><th>Tiêu đề</th><th>Đối tượng</th><th>Trạng thái</th><th>Số phản hồi</th><th>Thời gian</th><th></th></tr>
+        </thead>
+        <tbody id="surveyTableBody"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script src="assets/js/layout.js"></script>
+<script>
+  requireAuth(["ADMIN", "MANAGER"]);
+  renderLayout("survey");
+
+  let criteriaList = [];
+  let questionCount = 0;
+
+  function toggleCreateForm() {
+    const card = document.getElementById("createFormCard");
+    card.style.display = card.style.display === "none" ? "block" : "none";
+  }
+
+  function addQuestionRow() {
+    questionCount++;
+    const id = questionCount;
+    const criteriaOptions = criteriaList.map(c => `<option value="${c.criteriaId}">${c.criteriaName}</option>`).join("");
+    const row = document.createElement("div");
+    row.className = "card";
+    row.style.background = "#f8fafd";
+    row.id = `q-row-${id}`;
+    row.innerHTML = `
+      <div class="form-row">
+        <div class="form-group" style="flex:3"><label>Nội dung câu hỏi</label><input class="q-text" placeholder="VD: Bạn đánh giá thế nào về..." /></div>
+        <div class="form-group">
+          <label>Loại câu hỏi</label>
+          <select class="q-type">
+            <option value="SCALE">Thang điểm (1-5)</option>
+            <option value="TEXT">Tự luận</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Liên kết tiêu chí/KPI</label>
+          <select class="q-criteria"><option value="">-- Không liên kết --</option>${criteriaOptions}</select>
+        </div>
+        <div class="form-group" style="flex:0 0 90px;"><label>&nbsp;</label>
+          <button class="btn btn-danger btn-sm" onclick="document.getElementById('q-row-${id}').remove()">Xóa</button>
+        </div>
+      </div>`;
+    document.getElementById("questionsList").appendChild(row);
+  }
+
+  async function createSurvey() {
+    const questions = Array.from(document.querySelectorAll("#questionsList > div")).map((row, idx) => ({
+      criteriaId: row.querySelector(".q-criteria").value ? parseInt(row.querySelector(".q-criteria").value) : null,
+      questionText: row.querySelector(".q-text").value.trim(),
+      questionType: row.querySelector(".q-type").value,
+      optionsJson: null,
+      orderNo: idx + 1
+    })).filter(q => q.questionText);
+
+    if (!document.getElementById("surveyTitle").value.trim()) return alert("Vui lòng nhập tiêu đề khảo sát.");
+    if (questions.length === 0) return alert("Vui lòng thêm ít nhất 1 câu hỏi.");
+
+    const payload = {
+      title: document.getElementById("surveyTitle").value.trim(),
+      description: document.getElementById("surveyDesc").value.trim(),
+      targetRole: document.getElementById("targetRole").value,
+      startDate: document.getElementById("startDate").value || null,
+      endDate: document.getElementById("endDate").value || null,
+      questions
+    };
+
+    try {
+      await Api.post("/surveys", payload);
+      toggleCreateForm();
+      document.getElementById("questionsList").innerHTML = "";
+      await loadSurveys();
+    } catch (e) { alert(e.message); }
+  }
+
+  async function updateStatus(id, status) {
+    try { await Api.put(`/surveys/${id}/status`, status); await loadSurveys(); }
+    catch (e) { alert(e.message); }
+  }
+
+  async function deleteSurvey(id) {
+    if (!confirm("Xóa khảo sát này? Toàn bộ phản hồi liên quan cũng sẽ bị xóa.")) return;
+    try { await Api.del(`/surveys/${id}`); await loadSurveys(); }
+    catch (e) { alert(e.message); }
+  }
+
+  function statusBadge(status) {
+    if (status === "OPEN") return '<span class="badge badge-success">Đang mở</span>';
+    if (status === "CLOSED") return '<span class="badge badge-danger">Đã đóng</span>';
+    return '<span class="badge badge-warning">Bản nháp</span>';
+  }
+
+  async function loadSurveys() {
+    const list = await Api.get("/surveys");
+    document.getElementById("surveyTableBody").innerHTML = list.map(s => `
+      <tr>
+        <td>${s.title}</td>
+        <td>${s.targetRole || "ALL"}</td>
+        <td>${statusBadge(s.status)}</td>
+        <td>${s.responseCount}</td>
+        <td>${s.startDate ? s.startDate.substring(0,10) : "-"} → ${s.endDate ? s.endDate.substring(0,10) : "-"}</td>
+        <td class="flex gap-8">
+          ${s.status !== "OPEN" ? `<button class="btn btn-outline btn-sm" onclick="updateStatus(${s.surveyId}, 'OPEN')">Mở</button>` : ""}
+          ${s.status === "OPEN" ? `<button class="btn btn-outline btn-sm" onclick="updateStatus(${s.surveyId}, 'CLOSED')">Đóng</button>` : ""}
+          <button class="btn btn-danger btn-sm" onclick="deleteSurvey(${s.surveyId})">Xóa</button>
+        </td>
+      </tr>`).join("") || `<tr><td colspan="6" class="text-center" style="color:#999;">Chưa có khảo sát nào</td></tr>`;
+  }
+
+  (async () => {
+    criteriaList = await Api.get("/criteria");
+    await loadSurveys();
+  })();
+</script>
+</body>
+</html>

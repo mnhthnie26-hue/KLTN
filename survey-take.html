@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Tham gia khảo sát</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+<div id="banner-placeholder"></div>
+<div class="app-layout">
+  <div id="sidebar-placeholder"></div>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div>
+        <h1>Tham gia khảo sát</h1>
+        <div class="subtitle">Chọn một khảo sát đang mở để đóng góp ý kiến đánh giá</div>
+      </div>
+    </div>
+
+    <div class="card" id="surveyListCard">
+      <h3>Khảo sát đang mở</h3>
+      <div id="openSurveys"></div>
+    </div>
+
+    <div class="card" id="answerFormCard" style="display:none;">
+      <h3 id="answerFormTitle"></h3>
+      <div id="answerFormBody"></div>
+      <button class="btn btn-primary mt-16" onclick="submitAnswers()">Gửi phản hồi</button>
+      <button class="btn btn-outline mt-16" onclick="closeAnswerForm()">Hủy</button>
+    </div>
+  </main>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script src="assets/js/layout.js"></script>
+<script>
+  requireAuth();
+  renderLayout("survey-take");
+
+  let currentSurveyId = null;
+
+  async function loadOpenSurveys() {
+    const list = await Api.get("/surveys?status=OPEN");
+    document.getElementById("openSurveys").innerHTML = list.length
+      ? list.map(s => `
+        <div class="card" style="background:#f8fafd;">
+          <b>${s.title}</b>
+          <p style="color:#6b7785;font-size:13.5px;">${s.description || ""}</p>
+          <button class="btn btn-primary btn-sm" onclick="openSurvey(${s.surveyId})">Làm khảo sát</button>
+        </div>`).join("")
+      : `<p style="color:#999;">Hiện chưa có khảo sát nào đang mở.</p>`;
+  }
+
+  async function openSurvey(id) {
+    const survey = await Api.get(`/surveys/${id}`);
+    currentSurveyId = id;
+    document.getElementById("answerFormTitle").textContent = survey.title;
+    document.getElementById("answerFormBody").innerHTML = survey.questions.map(q => {
+      if (q.questionType === "SCALE") {
+        return `
+          <div class="form-group" data-qid="${q.questionId}" data-type="SCALE">
+            <label>${q.questionText}</label>
+            <select class="answer-input">
+              <option value="5">5 - Rất tốt</option>
+              <option value="4">4 - Tốt</option>
+              <option value="3" selected>3 - Bình thường</option>
+              <option value="2">2 - Chưa tốt</option>
+              <option value="1">1 - Kém</option>
+            </select>
+          </div>`;
+      }
+      return `
+        <div class="form-group" data-qid="${q.questionId}" data-type="TEXT">
+          <label>${q.questionText}</label>
+          <textarea class="answer-input" rows="2"></textarea>
+        </div>`;
+    }).join("");
+
+    document.getElementById("answerFormCard").style.display = "block";
+    document.getElementById("surveyListCard").style.display = "none";
+  }
+
+  function closeAnswerForm() {
+    document.getElementById("answerFormCard").style.display = "none";
+    document.getElementById("surveyListCard").style.display = "block";
+  }
+
+  async function submitAnswers() {
+    const groups = document.querySelectorAll("#answerFormBody .form-group");
+    const answers = Array.from(groups).map(g => {
+      const questionId = parseInt(g.dataset.qid);
+      const type = g.dataset.type;
+      const input = g.querySelector(".answer-input");
+      return type === "SCALE"
+        ? { questionId, answerValue: input.value, answerText: null }
+        : { questionId, answerValue: null, answerText: input.value };
+    });
+
+    try {
+      await Api.post(`/surveys/${currentSurveyId}/responses`, { answers });
+      alert("Cảm ơn bạn đã hoàn thành khảo sát!");
+      closeAnswerForm();
+    } catch (e) { alert(e.message); }
+  }
+
+  loadOpenSurveys();
+</script>
+</body>
+</html>

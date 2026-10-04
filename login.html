@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Đăng nhập | Hệ thống đánh giá chất lượng</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+<div class="login-wrapper">
+  <div class="school-banner">
+    <div class="school-banner__inner">
+      <img src="assets/images/logo-header.png" alt="Logo trường" class="school-banner__logo" />
+    </div>
+  </div>
+
+  <div class="login-center">
+    <div class="login-box">
+      <h2>Đăng nhập hệ thống</h2>
+      <div class="subtitle">Đánh giá chất lượng các hoạt động của trường</div>
+
+      <div id="errorBox" class="error-message"></div>
+
+      <form id="loginForm">
+        <div class="form-group">
+          <label>Tên đăng nhập</label>
+          <input type="text" id="username" required placeholder="VD: admin" />
+        </div>
+        <div class="form-group">
+          <label>Mật khẩu</label>
+          <input type="password" id="password" required placeholder="••••••••" />
+        </div>
+        <button type="submit" class="btn btn-primary w-full">Đăng nhập</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script>
+  document.getElementById("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorBox = document.getElementById("errorBox");
+    errorBox.style.display = "none";
+
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+
+    try {
+      const result = await Api.post("/auth/login", { username, password });
+      Api.setSession(result.token, result.fullName, result.roleCode);
+      window.location.href = "dashboard.html";
+    } catch (err) {
+      errorBox.textContent = err.message || "Đăng nhập thất bại.";
+      errorBox.style.display = "block";
+    }
+  });
+
+  // Nếu đã đăng nhập, chuyển thẳng vào dashboard
+  if (Api.getToken()) window.location.href = "dashboard.html";
+</script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<title>Quản lý người dùng</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+<div id="banner-placeholder"></div>
+<div class="app-layout">
+  <div id="sidebar-placeholder"></div>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div>
+        <h1>Quản lý người dùng</h1>
+        <div class="subtitle">Sinh viên, giảng viên, cán bộ quản lý • Phân quyền truy cập theo vai trò</div>
+      </div>
+      <button class="btn btn-primary" onclick="openCreateForm()">+ Thêm người dùng</button>
+    </div>
+
+    <div class="card">
+      <div class="form-group" style="max-width:260px;">
+        <label>Lọc theo vai trò</label>
+        <select id="filterRole" onchange="loadUsers()">
+          <option value="">-- Tất cả --</option>
+          <option value="ADMIN">Quản trị</option>
+          <option value="MANAGER">Cán bộ quản lý</option>
+          <option value="LECTURER">Giảng viên</option>
+          <option value="STUDENT">Sinh viên</option>
+        </select>
+      </div>
+      <table class="data-table">
+        <thead><tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Email</th><th>Vai trò</th><th>Đơn vị</th><th>Trạng thái</th><th></th></tr></thead>
+        <tbody id="userTableBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card" id="userFormCard" style="display:none;">
+      <h3 id="userFormTitle">Thêm người dùng mới</h3>
+      <input type="hidden" id="editUserId" />
+      <div class="form-row">
+        <div class="form-group"><label>Tên đăng nhập</label><input id="uUsername" /></div>
+        <div class="form-group"><label>Mật khẩu (chỉ khi tạo mới)</label><input type="password" id="uPassword" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Họ tên</label><input id="uFullName" /></div>
+        <div class="form-group"><label>Email</label><input id="uEmail" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Vai trò</label>
+          <select id="uRole">
+            <option value="STUDENT">Sinh viên</option>
+            <option value="LECTURER">Giảng viên</option>
+            <option value="MANAGER">Cán bộ quản lý</option>
+            <option value="ADMIN">Quản trị</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Đơn vị / Khoa</label><input id="uDepartment" /></div>
+      </div>
+      <div class="flex gap-8">
+        <button class="btn btn-primary" onclick="saveUser()">Lưu</button>
+        <button class="btn btn-outline" onclick="closeUserForm()">Hủy</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="assets/js/api.js"></script>
+<script src="assets/js/layout.js"></script>
+<script>
+  requireAuth(["ADMIN"]);
+  renderLayout("users");
+
+  async function loadUsers() {
+    const role = document.getElementById("filterRole").value;
+    const list = await Api.get(`/users${role ? "?role=" + role : ""}`);
+    document.getElementById("userTableBody").innerHTML = list.map(u => `
+      <tr>
+        <td>${u.username}</td><td>${u.fullName}</td><td>${u.email || "-"}</td>
+        <td><span class="badge badge-info">${u.roleName}</span></td>
+        <td>${u.department || "-"}</td>
+        <td>${u.status ? '<span class="badge badge-success">Hoạt động</span>' : '<span class="badge badge-danger">Đã khóa</span>'}</td>
+        <td class="flex gap-8">
+          <button class="btn btn-outline btn-sm" onclick='editUser(${JSON.stringify(u)})'>Sửa</button>
+          <button class="btn btn-danger btn-sm" onclick="lockUser(${u.userId})">Khóa</button>
+        </td>
+      </tr>`).join("") || `<tr><td colspan="7" class="text-center" style="color:#999;">Chưa có người dùng</td></tr>`;
+  }
+
+  function openCreateForm() {
+    document.getElementById("userFormTitle").textContent = "Thêm người dùng mới";
+    document.getElementById("editUserId").value = "";
+    document.getElementById("uUsername").value = "";
+    document.getElementById("uUsername").disabled = false;
+    document.getElementById("uPassword").value = "";
+    document.getElementById("uPassword").style.display = "block";
+    document.getElementById("uFullName").value = "";
+    document.getElementById("uEmail").value = "";
+    document.getElementById("uDepartment").value = "";
+    document.getElementById("uRole").value = "STUDENT";
+    document.getElementById("userFormCard").style.display = "block";
+  }
+
+  function editUser(u) {
+    document.getElementById("userFormTitle").textContent = "Cập nhật người dùng";
+    document.getElementById("editUserId").value = u.userId;
+    document.getElementById("uUsername").value = u.username;
+    document.getElementById("uUsername").disabled = true;
+    document.getElementById("uPassword").style.display = "none";
+    document.getElementById("uFullName").value = u.fullName;
+    document.getElementById("uEmail").value = u.email || "";
+    document.getElementById("uDepartment").value = u.department || "";
+    document.getElementById("uRole").value = u.roleCode;
+    document.getElementById("userFormCard").style.display = "block";
+    window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  }
+
+  function closeUserForm() { document.getElementById("userFormCard").style.display = "none"; }
+
+  async function saveUser() {
+    const id = document.getElementById("editUserId").value;
+    const roleCode = document.getElementById("uRole").value;
+    const fullName = document.getElementById("uFullName").value.trim();
+    const email = document.getElementById("uEmail").value.trim();
+    const department = document.getElementById("uDepartment").value.trim();
+
+    try {
+      if (id) {
+        await Api.put(`/users/${id}`, { fullName, email, phone: null, roleCode, department, status: true });
+      } else {
+        const username = document.getElementById("uUsername").value.trim();
+        const password = document.getElementById("uPassword").value;
+        if (!username || !password) return alert("Vui lòng nhập tên đăng nhập và mật khẩu.");
+        await Api.post("/users", { username, password, fullName, email, roleCode, department, studentCode: null, staffCode: null });
+      }
+      closeUserForm();
+      await loadUsers();
+    } catch (e) { alert(e.message); }
+  }
+
+  async function lockUser(id) {
+    if (!confirm("Khóa tài khoản này?")) return;
+    try { await Api.del(`/users/${id}`); await loadUsers(); }
+    catch (e) { alert(e.message); }
+  }
+
+  loadUsers();
+</script>
+</body>
+</html>
